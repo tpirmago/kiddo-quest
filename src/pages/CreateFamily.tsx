@@ -14,7 +14,7 @@ export default function CreateFamily() {
     <div className="min-h-screen bg-[#F6F7FB] flex flex-col items-center justify-center px-6">
       <div className="flex-1 flex flex-col items-center justify-center">
       <div className="bg-white rounded-3xl shadow-md border border-purple-100 p-8 w-full max-w-sm text-center flex flex-col items-center gap-6">
-        <div className="text-7xl">👨‍👩‍👧</div>
+        <div className="text-7xl"></div>
 
         <div>
           <h1 className="text-3xl font-black text-gray-800 mb-2">Create your family</h1>
