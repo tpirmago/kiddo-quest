@@ -21,7 +21,7 @@ export default function ChildCard({ child, stars, onDelete }: Props) {
         <p className="font-bold text-gray-800 text-lg truncate">{child.name}</p>
         <p className="text-sm mt-0.5">
           {Array.from({ length: 7 }, (_, i) => (
-            <span key={i}>{i < stars ? '⭐' : '⬜'}</span>
+            <span key={i} className={i < stars ? '' : 'opacity-[0.08]'}>{i < stars ? '⭐' : '⬜'}</span>
           ))}
         </p>
       </div>

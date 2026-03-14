@@ -14,7 +14,7 @@ export default function ChoreCard({ title, completed, onComplete, onDelete }: Pr
       <p className={`flex-1 font-medium text-base ${completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>
         {title}
       </p>
-      {completed && <span className="text-green-500 font-semibold text-sm">+1 ⭐</span>}
+      {completed && <span className="text-green-500 font-semibold text-sm"></span>}
       {!completed && (
         <button
           onClick={onComplete}

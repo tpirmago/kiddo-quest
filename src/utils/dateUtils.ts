@@ -3,24 +3,38 @@ export function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-/** Monday of the current week as "YYYY-MM-DD" */
-export function currentWeekMonday(): string {
+/** Start of week as "YYYY-MM-DD". weekStartDay: 0=Sun, 1=Mon, ..., 6=Sat. Default 1 (Monday). */
+export function currentWeekStart(weekStartDay: number = 1): string {
   const now = new Date()
-  const day = now.getDay()                   // 0 = Sun
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(now)
-  monday.setDate(now.getDate() + diff)
-  return monday.toISOString().slice(0, 10)
+  const day = now.getDay()  // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysDiff = (day - weekStartDay + 7) % 7
+  const start = new Date(now)
+  start.setDate(now.getDate() - daysDiff)
+  return start.toISOString().slice(0, 10)
 }
 
-/** All 7 date strings (Mon → Sun) for the current week */
-export function currentWeekDates(): string[] {
-  const monday = new Date(currentWeekMonday())
+/** All 7 date strings for the current week. weekStartDay: 0=Sun, 1=Mon, ..., 6=Sat. Default 1. */
+export function currentWeekDates(weekStartDay: number = 1): string[] {
+  const start = new Date(currentWeekStart(weekStartDay))
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
     return d.toISOString().slice(0, 10)
   })
+}
+
+/** Day of week for date "YYYY-MM-DD". Returns 0=Sun, 1=Mon, ..., 6=Sat */
+export function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr + 'T12:00:00').getDay()
+}
+
+/** Monday "YYYY-MM-DD" of the calendar week (Mon-Sun) containing the given date */
+export function getMondayOfWeek(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00')
+  const day = d.getDay()  // 0=Sun, 1=Mon, ..., 6=Sat
+  const daysToMonday = day === 0 ? 6 : day - 1  // Sun -> -6, Mon -> 0, Tue -> -1, etc.
+  d.setDate(d.getDate() - daysToMonday)
+  return d.toISOString().slice(0, 10)
 }
 
 /** ISO week number (1–53) */

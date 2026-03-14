@@ -1,4 +1,5 @@
-import type { AppData, Child, Chore, Reward, Progress, LastReward } from '../types/types'
+import type { AppData, Child, Chore, Reward, Progress, LastReward, RewardClaimedForWeek } from '../types/types'
+import { currentWeekDates, currentWeekStart, getDayOfWeek, getMondayOfWeek, today } from './dateUtils'
 
 const KEY = 'kiddoquest'
 
@@ -8,6 +9,8 @@ const EMPTY: AppData = {
   rewards:  [],
   progress: [],
   lastReward: null,
+  rewardClaimedForWeek: [],
+  weekStartDay: 1,
 }
 
 // ---------------------------------------------------------------------------
@@ -15,14 +18,17 @@ const EMPTY: AppData = {
 // dropping any records that are missing required fields.
 // ---------------------------------------------------------------------------
 
+const VALID_HEROES = ['cat', 'dog', 'sloth', 'lion', 'leopard', 'zebra', 'panda', 'monkey'] as const
+
 function isChild(v: unknown): v is Child {
   if (!v || typeof v !== 'object') return false
   const c = v as Record<string, unknown>
-  return (
-    typeof c.id   === 'string' &&
-    typeof c.name === 'string' &&
-    ['fox', 'frog', 'cat', 'panda', 'tiger'].includes(c.hero as string)
-  )
+  if (
+    typeof c.id !== 'string' ||
+    typeof c.name !== 'string' ||
+    !VALID_HEROES.includes(c.hero as (typeof VALID_HEROES)[number])
+  ) return false
+  return true
 }
 
 function isReward(v: unknown): v is Reward {
@@ -49,10 +55,21 @@ function isProgress(v: unknown): v is Progress {
 function normalise(raw: unknown): AppData {
   if (!raw || typeof raw !== 'object') return { ...EMPTY }
   const r = raw as Record<string, unknown>
-  const children = Array.isArray(r.children) ? r.children.filter(isChild) : []
+  const children: Child[] = Array.isArray(r.children)
+    ? r.children.filter(isChild).map((c: Child) => {
+        const weekStartDay = typeof c.weekStartDay === 'number' && c.weekStartDay >= 0 && c.weekStartDay <= 6
+          ? c.weekStartDay
+          : 1
+        const firstWeekKey = typeof c.firstWeekKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.firstWeekKey)
+          ? c.firstWeekKey
+          : undefined
+        return { ...c, weekStartDay, firstWeekKey }
+      })
+    : []
   const firstChildId = children[0]?.id ?? null
 
   // Parse chores: support legacy { id, title } by assigning to first child
+  const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
   let chores: Chore[] = []
   if (Array.isArray(r.chores)) {
     chores = r.chores
@@ -67,11 +84,15 @@ function normalise(raw: unknown): AppData {
         return false
       })
       .map(c => {
-        const x = c as { id: string; childId?: string; title: string }
+        const x = c as { id: string; childId?: string; title: string; daysOfWeek?: number[] }
+        const days = Array.isArray(x.daysOfWeek) && x.daysOfWeek.length > 0
+          ? x.daysOfWeek.filter(d => d >= 0 && d <= 6)
+          : ALL_DAYS
         return {
           id: x.id,
           childId: x.childId ?? firstChildId!,
           title: x.title,
+          daysOfWeek: days,
         } as Chore
       })
   }
@@ -101,12 +122,29 @@ function normalise(raw: unknown): AppData {
     }
   }
 
+  const weekStartDay = typeof r.weekStartDay === 'number' && r.weekStartDay >= 0 && r.weekStartDay <= 6
+    ? r.weekStartDay
+    : 1
+
+  let rewardClaimedForWeek: RewardClaimedForWeek[] = []
+  if (Array.isArray(r.rewardClaimedForWeek)) {
+    rewardClaimedForWeek = r.rewardClaimedForWeek
+      .filter((x): x is RewardClaimedForWeek => {
+        if (!x || typeof x !== 'object') return false
+        const rc = x as Record<string, unknown>
+        return typeof rc.childId === 'string' && typeof rc.weekKey === 'string'
+      })
+      .map(x => ({ childId: (x as RewardClaimedForWeek).childId, weekKey: (x as RewardClaimedForWeek).weekKey }))
+  }
+
   return {
     children,
     chores,
     rewards,
     progress: Array.isArray(r.progress) ? r.progress.filter(isProgress) : [],
     lastReward,
+    rewardClaimedForWeek,
+    weekStartDay,
   }
 }
 
@@ -144,7 +182,10 @@ export function isFamilyReady(): boolean {
 
 export function addChild(child: Child): void {
   const data = loadData()
-  data.children.push(child)
+  const weekStartDay = child.weekStartDay ?? 1
+  const firstWeekKey = getMondayOfWeek(today())
+  const c = { ...child, weekStartDay, firstWeekKey }
+  data.children.push(c)
   saveData(data)
 }
 
@@ -161,10 +202,101 @@ export function removeChild(id: string): void {
 // Chores
 // ---------------------------------------------------------------------------
 
-export function addChore(childId: string, title: string): void {
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
+
+export function addChore(childId: string, title: string, daysOfWeek?: number[]): void {
   const data = loadData()
-  data.chores.push({ id: crypto.randomUUID(), childId, title })
+  const days = Array.isArray(daysOfWeek) && daysOfWeek.length > 0
+    ? daysOfWeek.filter(d => d >= 0 && d <= 6)
+    : ALL_DAYS
+  data.chores.push({ id: crypto.randomUUID(), childId, title, daysOfWeek: days })
   saveData(data)
+}
+
+/** Chores due on a specific date. dateStr "YYYY-MM-DD", dayOfWeek 0=Sun..6=Sat */
+export function getChildChoresForDate(childId: string, dateStr: string): Chore[] {
+  const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay()
+  return loadData().chores.filter(c => {
+    if (c.childId !== childId) return false
+    const days = c.daysOfWeek ?? ALL_DAYS
+    return days.includes(dayOfWeek)
+  })
+}
+
+/** Get week start day for a child. 0=Sun, 1=Mon, ..., 6=Sat. Default 1 (Monday). */
+export function getWeekStartDayForChild(childId: string): number {
+  const data = loadData()
+  const child = data.children.find(c => c.id === childId)
+  const d = child?.weekStartDay ?? data.weekStartDay ?? 1
+  return d >= 0 && d <= 6 ? d : 1
+}
+
+/** Set week start day for a child. If firstWeekKey not set, sets it to current week (first week with reduced days). */
+export function setWeekStartDayForChild(childId: string, day: number): void {
+  const data = loadData()
+  const d = day >= 0 && day <= 6 ? day : 1
+  const child = data.children.find(c => c.id === childId)
+  if (child) {
+    child.weekStartDay = d
+    if (child.firstWeekKey == null) {
+      child.firstWeekKey = getMondayOfWeek(today())
+    }
+    saveData(data)
+  }
+}
+
+/** Days from weekStartDay to Sunday (first week only). Mon=7, Tue=6, Wed=5, Thu=4, Fri=3, Sat=2, Sun=1 */
+function getFirstWeekDayCount(weekStartDay: number): number {
+  return weekStartDay === 0 ? 1 : 8 - weekStartDay
+}
+
+/** Filter week dates to only include days from weekStartDay through Sunday (for first week) */
+function filterFirstWeekDates(weekDates: string[], weekStartDay: number): string[] {
+  if (weekStartDay === 0) return weekDates.filter(date => getDayOfWeek(date) === 0)
+  return weekDates.filter(date => {
+    const dow = getDayOfWeek(date)
+    return dow >= weekStartDay || dow === 0
+  })
+}
+
+/** True if today is in the same calendar week (Mon-Sun) as child's firstWeekKey */
+function isChildInFirstWeek(child: Child | undefined): boolean {
+  if (!child?.firstWeekKey) return false
+  return getMondayOfWeek(today()) === getMondayOfWeek(child.firstWeekKey)
+}
+
+/** Stars = count of days in week where child completed all chores due on that date */
+export function getStarsForChild(childId: string): number {
+  const data = loadData()
+  const weekStart = getWeekStartDayForChild(childId)
+  const child = data.children.find(c => c.id === childId)
+  const isFirstWeek = isChildInFirstWeek(child)
+  // First week: use calendar week (Mon-Sun), filter to weekStartDay..Sunday
+  const weekDates = isFirstWeek ? currentWeekDates(1) : currentWeekDates(weekStart)
+  const datesToCount = isFirstWeek ? filterFirstWeekDates(weekDates, weekStart) : weekDates
+
+  let stars = 0
+  for (const date of datesToCount) {
+    const choresDue = getChildChoresForDate(childId, date)
+    if (choresDue.length === 0) continue
+    const done = data.progress.filter(p => p.childId === childId && p.date === date).length
+    if (done >= choresDue.length) stars++
+  }
+  return stars
+}
+
+/** Total days in week that have at least one chore for this child. First week: days from start day to Sunday. */
+export function getTotalDaysForChild(childId: string): number {
+  const weekStart = getWeekStartDayForChild(childId)
+  const weekDates = currentWeekDates(weekStart)
+  const data = loadData()
+  const child = data.children.find(c => c.id === childId)
+  const isFirstWeek = isChildInFirstWeek(child)
+
+  if (isFirstWeek) {
+    return getFirstWeekDayCount(weekStart)
+  }
+  return weekDates.filter(date => getChildChoresForDate(childId, date).length > 0).length
 }
 
 export function removeChore(id: string): void {
@@ -220,6 +352,25 @@ export function clearLastReward(): void {
   saveData(data)
 }
 
+/** Mark that child claimed their reward for the current week. Call when user clicks "Reward received". */
+export function setRewardClaimedForWeek(childId: string): void {
+  const data = loadData()
+  const weekKey = currentWeekStart(getWeekStartDayForChild(childId))
+  const list = data.rewardClaimedForWeek ?? []
+  const filtered = list.filter(rc => rc.childId !== childId || rc.weekKey !== weekKey)
+  filtered.push({ childId, weekKey })
+  data.rewardClaimedForWeek = filtered
+  saveData(data)
+}
+
+/** True if child already claimed their reward for the current week. */
+export function wasRewardClaimedThisWeek(childId: string): boolean {
+  const data = loadData()
+  const weekKey = currentWeekStart(getWeekStartDayForChild(childId))
+  const list = data.rewardClaimedForWeek ?? []
+  return list.some(rc => rc.childId === childId && rc.weekKey === weekKey)
+}
+
 // ---------------------------------------------------------------------------
 // Progress
 // ---------------------------------------------------------------------------
@@ -239,6 +390,23 @@ export function addProgress(entry: Progress): boolean {
   data.progress.push(entry)
   saveData(data)
   return true
+}
+
+/** Fill all 7 days of the current week with progress for testing the reward wheel. */
+export function fillWeekForTesting(childId: string, weekDates: string[]): void {
+  const data = loadData()
+  for (const date of weekDates) {
+    const choresDue = getChildChoresForDate(childId, date)
+    for (const chore of choresDue) {
+      const exists = data.progress.some(
+        p => p.childId === childId && p.choreId === chore.id && p.date === date
+      )
+      if (!exists) {
+        data.progress.push({ childId, choreId: chore.id, date })
+      }
+    }
+  }
+  saveData(data)
 }
 
 // ---------------------------------------------------------------------------

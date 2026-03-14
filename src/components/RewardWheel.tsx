@@ -11,10 +11,11 @@ const HUB_RADIUS = 24
 interface Props {
   rewards: string[]
   onRewardSelected?: (reward: string) => void
+  onRewardModalClose?: () => void
   demo?: boolean
 }
 
-export default function RewardWheel({ rewards, onRewardSelected, demo = false }: Props) {
+export default function RewardWheel({ rewards, onRewardSelected, onRewardModalClose, demo = false }: Props) {
   const [rotation, setRotation] = useState(0)
   const [spinning, setSpinning] = useState(false)
   const [wonReward, setWonReward] = useState<string | null>(null)
@@ -22,7 +23,10 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
   const items = rewards.length > 0 ? rewards : ['Add rewards!']
   const segAngle = (2 * Math.PI) / items.length
 
-  const closeModal = useCallback(() => setWonReward(null), [])
+  const closeModal = useCallback(() => {
+    setWonReward(null)
+    onRewardModalClose?.()
+  }, [onRewardModalClose])
 
   function spin() {
     if (spinning || items.length === 0) return
@@ -52,7 +56,8 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
       } else {
         setSpinning(false)
         const finalAngle = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
-        const idx = Math.floor(finalAngle / segAngle) % items.length
+        const pointerAngle = (2 * Math.PI - finalAngle) % (2 * Math.PI)
+        const idx = Math.floor(pointerAngle / segAngle) % items.length
         const winner = items[idx]
         setWonReward(winner)
         onRewardSelected?.(winner)
@@ -75,8 +80,8 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
           <svg width="28" height="28" viewBox="0 0 28 28" className="drop-shadow-md">
             <path
               d="M0 14 L22 6 L22 22 Z"
-              fill="#FF8A00"
-              stroke="#e67a00"
+              fill="#6C63FF"
+              stroke="#5a52e0"
               strokeWidth="1.5"
               strokeLinejoin="round"
             />
@@ -100,6 +105,11 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
                 const end = start + segAngle
                 const midAngle = start + segAngle / 2
                 const color = SEGMENT_COLORS[i % SEGMENT_COLORS.length]
+                const labelRadius = (RADIUS + HUB_RADIUS) / 2
+                const labelX = labelRadius * Math.cos(midAngle)
+                const labelY = labelRadius * Math.sin(midAngle)
+                let rotDeg = (midAngle * 180) / Math.PI
+                if (rotDeg > 90 && rotDeg < 270) rotDeg += 180
 
                 const x1 = RADIUS * Math.cos(start)
                 const y1 = RADIUS * Math.sin(start)
@@ -117,16 +127,16 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
                       strokeWidth="2"
                     />
                     <text
-                      x={(RADIUS - 20) * Math.cos(midAngle)}
-                      y={(RADIUS - 20) * Math.sin(midAngle)}
+                      x={labelX}
+                      y={labelY}
                       fill={LABEL_COLOR}
-                      fontSize={Math.min(13, 72 / items.length + 6)}
+                      fontSize={Math.min(12, 64 / items.length + 5)}
                       fontWeight="bold"
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      transform={`rotate(${(midAngle * 180) / Math.PI + 90} ${(RADIUS - 20) * Math.cos(midAngle)} ${(RADIUS - 20) * Math.sin(midAngle)})`}
+                      transform={`rotate(${rotDeg} ${labelX} ${labelY})`}
                     >
-                      {label.length > 10 ? label.slice(0, 9) + '…' : label}
+                      {label.length > 12 ? label.slice(0, 11) + '…' : label}
                     </text>
                   </g>
                 )
@@ -151,9 +161,9 @@ export default function RewardWheel({ rewards, onRewardSelected, demo = false }:
       <button
         onClick={spin}
         disabled={spinning || rewards.length === 0}
-        className="bg-[#FF8A00] hover:bg-orange-500 disabled:opacity-50 text-white font-bold text-lg px-10 py-4 rounded-2xl shadow-md transition-all active:scale-95"
+        className="bg-[#6C63FF] hover:bg-purple-600 disabled:opacity-50 text-white font-bold text-lg px-10 py-4 rounded-2xl shadow-md transition-all active:scale-95"
       >
-        {spinning ? 'Spinning…' : 'SPIN!'}
+        {spinning ? 'Spinning…' : 'SPIN'}
       </button>
 
       {/* Reward modal */}

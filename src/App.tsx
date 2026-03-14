@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { isFamilyReady } from './utils/storage'
+import { isFamilyReady, loadData } from './utils/storage'
 import Landing      from './pages/Landing'
 import CreateFamily from './pages/CreateFamily'
 import Children     from './pages/Children'
@@ -15,12 +15,19 @@ function Ready({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+/** Root "/": show Landing if no children, else redirect to dashboard (children list) */
+function RootRoute() {
+  const { children } = loadData()
+  if (children.length > 0) return <Navigate to="/children" replace />
+  return <Landing />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         {/* Public */}
-        <Route path="/"              element={<Landing />} />
+        <Route path="/"              element={<RootRoute />} />
         <Route path="/create-family" element={<CreateFamily />} />
 
         {/* Requires family setup */}
