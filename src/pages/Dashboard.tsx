@@ -160,7 +160,7 @@ export default function Dashboard() {
             }}
             className="text-xs text-gray-400 hover:text-[#6C63FF] underline"
           >
-            Test: Fill all 7 days
+            {/* Test: Fill all 7 days */}
           </button>
         )}
 
